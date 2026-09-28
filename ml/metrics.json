@@ -1,0 +1,48 @@
+{
+  "synthetic_holdout_accuracy": 0.9333333333333333,
+  "classes": [
+    "GOOD",
+    "CHECK",
+    "ACTION_REQUIRED"
+  ],
+  "confusion_matrix": [
+    [
+      519,
+      81,
+      0
+    ],
+    [
+      32,
+      868,
+      0
+    ],
+    [
+      0,
+      27,
+      573
+    ]
+  ],
+  "n_train": 4200,
+  "n_test": 2100,
+  "n_trees": 30,
+  "max_depth": 6,
+  "features": [
+    "f1_415nm",
+    "f2_445nm",
+    "f3_480nm",
+    "f4_515nm",
+    "f5_555nm",
+    "f6_590nm",
+    "f7_630nm",
+    "f8_680nm",
+    "clear",
+    "nir",
+    "moisture_pct",
+    "temperature_c",
+    "ph",
+    "is_silage",
+    "blue_green_ratio",
+    "nir_clear_ratio"
+  ],
+  "note": "Synthetic data only. Not a measure of real-world accuracy."
+}
