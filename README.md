@@ -1,5 +1,7 @@
 # FeedScan: Rapid Feed & Silage Quality Testing System
 
+
+🔗 [Live Demo](https://feed-scan.web.app/test)
 FeedScan is an agricultural decision-support web application designed for dairy farmers, field extension officers, and feed managers to rapidly evaluate cattle feed and silage quality right on the farm.
 
 The system is designed to connect to a portable sensor unit (ESP32 with an AS7341 10-channel spectral sensor, capacitive moisture probe, silage pH electrode, temperature probe, and camera module) to deliver traffic-light feedback and feeding recommendations.
