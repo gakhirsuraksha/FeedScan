@@ -62,11 +62,11 @@ export function SpectralChart({ reading }: SpectralChartProps) {
       {/* Clear and NIR channels shown as tiles */}
       <div className="grid grid-cols-2 gap-2 mt-2">
         <div className="p-3 bg-gray-50 rounded-xl">
-          <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Clear (broadband)</p>
+          <p className="text-[11px] font-bold text-gray-500">Clear (broadband)</p>
           <p className="font-mono font-bold text-lg text-gray-900">{reading.clear.toLocaleString()}</p>
         </div>
         <div className="p-3 bg-rose-50 rounded-xl border border-rose-100">
-          <p className="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Near-infrared (~910 nm)</p>
+          <p className="text-[11px] font-bold text-rose-700">Near-infrared (~910 nm)</p>
           <p className="font-mono font-bold text-lg text-rose-900">{reading.nir.toLocaleString()}</p>
         </div>
       </div>

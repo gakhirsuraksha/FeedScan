@@ -1,32 +1,94 @@
-import { useState } from 'react';
-import { Bluetooth, Wifi, Cpu, CheckCircle2, Sliders } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Cpu, Cloud, CheckCircle2, Sliders, AlertTriangle } from 'lucide-react';
+import { CloudSource } from '../data-sources/CloudSource';
+import { getMode, setMode, type SourceMode } from '../data-sources/sourceStore';
 
 export function DevicePage() {
-  const [selectedSource, setSelectedSource] = useState<'simulated' | 'ble' | 'wifi'>('simulated');
-  const [wifiIp, setWifiIp] = useState('192.168.4.1');
+  const [mode, setModeState] = useState<SourceMode>(getMode());
+  const [liveStatus, setLiveStatus] = useState<'idle' | 'connecting' | 'connected' | 'offline'>('idle');
+  const [lastRaw, setLastRaw] = useState<unknown>(null);
+  const [lastSeenAgo, setLastSeenAgo] = useState<number | null>(null);
+  const sourceRef = useRef<CloudSource | null>(null);
+
+  const choose = (m: SourceMode) => {
+    setMode(m);
+    setModeState(m);
+  };
+
+  // While "Live" is selected, keep a background connection open just to show
+  // status + raw JSON here — the Test page opens its own connection when scanning.
+  useEffect(() => {
+    if (mode !== 'live') {
+      sourceRef.current?.stop();
+      setLiveStatus('idle');
+      return;
+    }
+
+    let cancelled = false;
+    setLiveStatus('connecting');
+
+    let source: CloudSource;
+    try {
+      source = new CloudSource();
+    } catch (err) {
+      setLiveStatus('offline');
+      console.error(err);
+      return;
+    }
+    sourceRef.current = source;
+
+    source
+      .start(() => {
+        if (cancelled) return;
+        setLiveStatus('connected');
+        setLastRaw(source.lastRaw);
+      })
+      .catch(() => {
+        if (!cancelled) setLiveStatus('offline');
+      });
+
+    const poll = setInterval(() => {
+      if (!source.lastPacketAt) return;
+      const ago = Date.now() - source.lastPacketAt;
+      setLastSeenAgo(ago);
+      if (ago > 5000) setLiveStatus('offline');
+      setLastRaw(source.lastRaw);
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      source.stop();
+    };
+  }, [mode]);
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-8 space-y-6 pb-14">
+    <main className="page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2.5">
+          <h1 className="page-title flex items-center gap-2.5">
             <Sliders className="w-6 h-6 text-emerald-800" />
             Device &amp; Telemetry
           </h1>
-          <p className="text-xs text-gray-500 mt-0.5">No device connected</p>
+          <p className="page-sub">
+            {mode === 'live'
+              ? liveStatus === 'connected' ? 'Sensor connected' : liveStatus === 'offline' ? 'No sensor data received' : 'Connecting…'
+              : 'Running demo data'}
+          </p>
         </div>
       </div>
 
       <p className="text-sm font-medium text-gray-600 leading-relaxed">
-        Select a sensor telemetry source. Readings currently run in <strong>simulation mode</strong>. Live sensor input will be available once the FeedScan device is connected.
+        Choose the telemetry source used for new tests. This choice applies immediately on the
+        New Test page.
       </p>
 
       <div className="space-y-3.5">
-        {/* Simulated */}
+        {/* Live via Firebase */}
         <div
-          onClick={() => setSelectedSource('simulated')}
+          onClick={() => choose('live')}
           className={`p-5 rounded-3xl border-2 cursor-pointer transition-all ${
-            selectedSource === 'simulated'
+            mode === 'live'
               ? 'border-emerald-800 bg-emerald-50/60 shadow-sm'
               : 'border-gray-200 bg-white hover:border-gray-300'
           }`}
@@ -34,95 +96,74 @@ export function DevicePage() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3.5">
               <div className="w-11 h-11 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-800">
+                <Cloud className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 text-base">Live Sensor (ESP32 via Firebase)</p>
+                <p className="page-sub">Reads the device's latest reading from Firebase Realtime Database</p>
+              </div>
+            </div>
+            {mode === 'live' && (
+              <span
+                className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full border shrink-0 ${
+                  liveStatus === 'connected'
+                    ? 'text-emerald-800 bg-emerald-100 border-emerald-200'
+                    : liveStatus === 'offline'
+                    ? 'text-rose-800 bg-rose-100 border-rose-200'
+                    : 'text-gray-600 bg-gray-100 border-gray-200'
+                }`}
+              >
+                {liveStatus === 'connected' && <><CheckCircle2 className="w-3.5 h-3.5" /> Connected</>}
+                {liveStatus === 'offline' && <><AlertTriangle className="w-3.5 h-3.5" /> Offline</>}
+                {liveStatus === 'connecting' && 'Connecting…'}
+              </span>
+            )}
+          </div>
+
+          {mode === 'live' && (
+            <div className="mt-3.5 p-3.5 bg-white/70 border border-emerald-200 rounded-2xl text-xs text-emerald-950 space-y-1.5">
+              {liveStatus === 'connected' && lastSeenAgo !== null && (
+                <p className="font-semibold">Last packet: {(lastSeenAgo / 1000).toFixed(1)}s ago</p>
+              )}
+              {liveStatus === 'offline' && (
+                <p className="text-rose-800 font-semibold">
+                  No data received. Check the ESP32 is powered, connected to Wi-Fi, and posting to
+                  the same Firebase database as VITE_FIREBASE_DB_URL.
+                </p>
+              )}
+              <p className="font-bold pt-1">Raw payload</p>
+              <pre className="whitespace-pre-wrap break-all bg-emerald-950/5 rounded-lg p-2 max-h-40 overflow-auto">
+                {lastRaw ? JSON.stringify(lastRaw, null, 2) : 'No payload received yet.'}
+              </pre>
+            </div>
+          )}
+        </div>
+
+        {/* Demo */}
+        <div
+          onClick={() => choose('demo')}
+          className={`p-5 rounded-3xl border-2 cursor-pointer transition-all ${
+            mode === 'demo'
+              ? 'border-amber-700 bg-amber-50/50 shadow-sm'
+              : 'border-gray-200 bg-white hover:border-gray-300'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-800">
                 <Cpu className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-bold text-gray-900 text-base">Simulation Engine</p>
-                <p className="text-xs text-gray-500 mt-0.5">AS7341 10-channel spectral + moisture + pH + temp driver</p>
+                <p className="font-bold text-gray-900 text-base">Demo Simulation</p>
+                <p className="page-sub">Generates synthetic readings for a chosen sample condition — no hardware needed</p>
               </div>
             </div>
-            {selectedSource === 'simulated' && (
-              <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-200 shrink-0">
+            {mode === 'demo' && (
+              <span className="flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1 rounded-full border border-amber-200 shrink-0">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Active
               </span>
             )}
           </div>
-        </div>
-
-        {/* BLE */}
-        <div
-          onClick={() => setSelectedSource('ble')}
-          className={`p-5 rounded-3xl border-2 cursor-pointer transition-all ${
-            selectedSource === 'ble'
-              ? 'border-blue-700 bg-blue-50/50 shadow-sm'
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-800">
-                <Bluetooth className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-bold text-gray-900 text-base">Bluetooth Low Energy (ESP32)</p>
-                <p className="text-xs text-gray-500 mt-0.5">Web Bluetooth GATT stream from portable hardware</p>
-              </div>
-            </div>
-            <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1 rounded-full shrink-0">
-              Coming soon
-            </span>
-          </div>
-
-          {selectedSource === 'ble' && (
-            <div className="mt-3.5 p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl text-xs text-blue-950 space-y-1">
-              <p className="font-bold">Bluetooth connection: coming soon</p>
-              <p className="text-blue-900/80">
-                Live Bluetooth input will be enabled when the sensor device is connected. Until then, readings run in simulation mode.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Wi-Fi */}
-        <div
-          onClick={() => setSelectedSource('wifi')}
-          className={`p-5 rounded-3xl border-2 cursor-pointer transition-all ${
-            selectedSource === 'wifi'
-              ? 'border-purple-700 bg-purple-50/50 shadow-sm'
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-purple-100 flex items-center justify-center text-purple-800">
-                <Wifi className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-bold text-gray-900 text-base">Local Wi-Fi / AP (ESP32)</p>
-                <p className="text-xs text-gray-500 mt-0.5">Direct WebSocket or REST telemetry stream</p>
-              </div>
-            </div>
-            <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1 rounded-full shrink-0">
-              Coming soon
-            </span>
-          </div>
-
-          {selectedSource === 'wifi' && (
-            <div className="mt-3.5 p-3.5 bg-purple-50/80 border border-purple-200 rounded-2xl text-xs text-purple-950 space-y-2.5">
-              <p className="font-bold">Wi-Fi connection: coming soon</p>
-              <label className="block font-bold">Device IP address:</label>
-              <input
-                type="text"
-                value={wifiIp}
-                onChange={(e) => setWifiIp(e.target.value)}
-                className="w-full p-2.5 border border-purple-300 rounded-xl text-xs font-mono bg-white focus:ring-2 focus:ring-purple-600 focus:outline-hidden"
-                placeholder="192.168.4.1"
-              />
-              <p className="text-purple-900/70">
-                Live Wi-Fi input will be enabled when the sensor device is connected. No device is connected.
-              </p>
-            </div>
-          )}
         </div>
       </div>
     </main>

@@ -4,13 +4,11 @@ import type { SensorReading } from '../types';
  * Abstract interface for all sensor data sources.
  *
  * Implementations:
- *  - SimulatedSource (default until hardware is connected)
- *  - BLESource (Web Bluetooth stub – TODO)
- *  - WiFiSource (WebSocket/HTTP stub – TODO)
+ *  - SimulatedSource (demo mode — synthetic readings for a chosen scenario)
+ *  - CloudSource (live mode — ESP32 readings relayed through Firebase Realtime Database)
  *
- * To add real hardware:
- * 1. Implement this interface in a new file
- * 2. Register it in src/pages/DevicePage.tsx
+ * The active implementation is chosen in src/data-sources/sourceStore.ts based on the
+ * mode selected on the Device page.
  */
 export interface DataSource {
   /** Start streaming. Each new reading is delivered via the callback. */

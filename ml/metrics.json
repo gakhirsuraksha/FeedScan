@@ -1,5 +1,5 @@
 {
-  "synthetic_holdout_accuracy": 0.9333333333333333,
+  "synthetic_holdout_accuracy": 0.9533333333333334,
   "classes": [
     "GOOD",
     "CHECK",
@@ -7,19 +7,19 @@
   ],
   "confusion_matrix": [
     [
-      519,
-      81,
+      534,
+      66,
       0
     ],
     [
-      32,
-      868,
-      0
+      22,
+      873,
+      5
     ],
     [
       0,
-      27,
-      573
+      5,
+      595
     ]
   ],
   "n_train": 4200,
@@ -42,7 +42,10 @@
     "ph",
     "is_silage",
     "blue_green_ratio",
-    "nir_clear_ratio"
+    "nir_clear_ratio",
+    "has_image",
+    "brightness",
+    "redness_ratio"
   ],
   "note": "Synthetic data only. Not a measure of real-world accuracy."
 }

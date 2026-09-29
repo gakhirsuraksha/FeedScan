@@ -56,8 +56,8 @@ export function ResultPage() {
   const reasonItemClass = (reason: string) => {
     if (reason.includes('✓') || reason.toLowerCase().includes('within expected')) {
       return {
-        icon: <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-700" aria-hidden="true" />,
-        bg: 'bg-emerald-50/80 border-emerald-200 text-emerald-950',
+        icon: <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-green-700" aria-hidden="true" />,
+        bg: 'bg-green-50/80 border-green-200 text-green-950',
       };
     }
     if (reason.toLowerCase().includes('flag') || reason.toLowerCase().includes('adulter') || reason.toLowerCase().includes('very high')) {
@@ -77,19 +77,19 @@ export function ResultPage() {
     const thresh = sampleType === 'feed' ? [18, 24] : [70, 75];
     if (m > thresh[1]) return { label: 'Very High', cls: 'bg-rose-100 text-rose-800' };
     if (m > thresh[0]) return { label: 'Elevated',  cls: 'bg-amber-100 text-amber-800' };
-    return { label: 'Normal', cls: 'bg-emerald-100 text-emerald-800' };
+    return { label: 'Normal', cls: 'bg-green-100 text-green-800' };
   };
 
   const phStatus = (ph: number) => {
     if (ph > 5.0) return { label: 'High – Spoilage Risk', cls: 'bg-rose-100 text-rose-800' };
     if (ph > 4.5) return { label: 'Elevated',             cls: 'bg-amber-100 text-amber-800' };
-    return { label: 'Normal (3.8–4.5)',   cls: 'bg-emerald-100 text-emerald-800' };
+    return { label: 'Normal (3.8–4.5)',   cls: 'bg-green-100 text-green-800' };
   };
 
   const mStatus = moistureStatus();
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-6 sm:py-8 space-y-6 pb-14">
+    <main className="page">
       {/* Top bar with back button & metadata */}
       <div className="flex items-center justify-between gap-3">
         <button
@@ -109,7 +109,7 @@ export function ResultPage() {
       </div>
 
       {/* ── Sample summary banner ─────────────────────────────── */}
-      <div className="bg-white border border-gray-200/80 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs shadow-xs">
+      <div className="card p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
         <div>
           <span className="text-gray-400">Sample:</span>{' '}
           <strong className="text-gray-800 font-semibold">{sampleId}</strong>
@@ -128,7 +128,7 @@ export function ResultPage() {
         <TrafficLight classification={classification} large />
 
         {/* Diagnostic Reasons */}
-        <div className="bg-white border border-gray-200/80 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="card p-5 sm:p-6 space-y-4">
           <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-emerald-700" aria-hidden="true" />
             Key Diagnostic Findings
@@ -150,8 +150,8 @@ export function ResultPage() {
 
           {/* Actionable recommendation box */}
           <div className="pt-2">
-            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-950">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800 mb-1">
+            <div className="note note-brand p-4">
+              <h4 className="text-xs font-bold text-emerald-800 mb-1">
                 Feeding Recommendation
               </h4>
               <p className="text-sm font-medium leading-relaxed">
@@ -176,17 +176,17 @@ export function ResultPage() {
           </span>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-xs">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50/80 border-b border-gray-200">
+        <div className="card overflow-hidden">
+          <table className="data-table w-full text-sm">
+            <thead>
               <tr>
-                <th className="p-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                <th>
                   Parameter
                 </th>
-                <th className="p-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                <th>
                   Estimated Value
                 </th>
-                <th className="p-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                <th>
                   Status
                 </th>
               </tr>
@@ -282,7 +282,7 @@ export function ResultPage() {
                     className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
                       estimated.spoilageRisk
                         ? 'bg-rose-100 text-rose-800'
-                        : 'bg-emerald-100 text-emerald-800'
+                        : 'bg-green-100 text-green-800'
                     }`}
                   >
                     {estimated.spoilageRisk ? 'Elevated Spoilage Risk' : 'Low Spoilage Risk'}
@@ -295,7 +295,7 @@ export function ResultPage() {
       </section>
 
       {/* ── Spectral chart card ──────────────────────────────── */}
-      <section className="bg-white border border-gray-200/80 rounded-3xl p-5 shadow-xs" aria-label="Spectral reading chart">
+      <section className="card p-5" aria-label="Spectral reading chart">
         <h3 className="text-sm font-bold text-gray-900 mb-2">Optical Sensor Response</h3>
         <SpectralChart reading={reading} />
       </section>
@@ -315,10 +315,10 @@ export function ResultPage() {
           type="button"
           onClick={handleSave}
           disabled={saved || isSaving}
-          className={`flex-1 flex items-center justify-center gap-2 p-3.5 rounded-2xl font-bold text-sm transition-all shadow-xs ${
+          className={`btn flex-1 ${
             saved
-              ? 'bg-emerald-100 text-emerald-800 cursor-default'
-              : 'bg-emerald-800 text-white hover:bg-emerald-700 active:scale-98'
+              ? 'bg-green-100 text-green-800 cursor-default'
+              : 'btn-primary'
           } disabled:opacity-80`}
         >
           <Save className="w-4 h-4" aria-hidden="true" />
@@ -328,7 +328,7 @@ export function ResultPage() {
         <button
           type="button"
           onClick={handlePrint}
-          className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors shadow-xs"
+          className="btn btn-secondary flex items-center justify-center gap-2 bg-white hover:bg-gray-50 transition-colors"
         >
           <Printer className="w-4 h-4" aria-hidden="true" />
           Print

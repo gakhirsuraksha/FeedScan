@@ -1,0 +1,23 @@
+{
+  "nav": { "home": "Home", "test": "New Test", "history": "History", "device": "Device", "batch": "Batch" },
+  "home": {
+    "badge": "Screening prototype",
+    "title": "Smart AI-Enabled Feed & Silage Quality Testing",
+    "subtitle": "A portable, low-cost device that gives dairy farmers a quick quality screening of animal feed and silage — no lab visit required for the initial check.",
+    "cta": "Start a Test",
+    "howItWorks": "How it works",
+    "step1Title": "Place sample", "step1Desc": "Load a small portion of feed or silage",
+    "step2Title": "Sensors read", "step2Desc": "Spectral, moisture, pH, and temp telemetry",
+    "step3Title": "AI analyses", "step3Desc": "Rapid nutritional and spoilage screening",
+    "step4Title": "Get advice", "step4Desc": "Clear status and feeding recommendation"
+  },
+  "test": {
+    "title": "New Quality Test",
+    "subtitle": "Choose the sample type and start the scan",
+    "categoryLabel": "Sample Category",
+    "feed": "Dry Feed",
+    "silage": "Silage",
+    "start": "Start Test",
+    "stop": "Stop"
+  }
+}

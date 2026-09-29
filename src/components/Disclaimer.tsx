@@ -14,7 +14,7 @@ export function Disclaimer({ variant = 'screening' }: DisclaimerProps) {
   return (
     <div
       role="note"
-      className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900"
+      className="flex items-start gap-2.5 note note-warn leading-relaxed"
     >
       <AlertTriangle
         className="w-4 h-4 mt-0.5 shrink-0 text-amber-600"

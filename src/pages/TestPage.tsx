@@ -7,7 +7,8 @@ import {
   FlaskConical,
   Camera,
 } from 'lucide-react';
-import { SimulatedSource } from '../data-sources/SimulatedSource';
+import { createSource, getMode } from '../data-sources/sourceStore';
+import type { DataSource } from '../data-sources/DataSource';
 import { predict } from '../model/predict';
 import { extractImageFeatures } from '../utils/imageFeatures';
 import { generateSessionId } from '../utils/sessionId';
@@ -59,8 +60,31 @@ const PROFILES: {
 ];
 
 const SCAN_DURATION_MS = 5000;
+/** In live mode, how long to wait for a first packet before giving up. */
+const LIVE_CONNECT_TIMEOUT_MS = 4000;
 
 type Phase = 'setup' | 'scanning' | 'done';
+
+/** Averages a batch of readings into one. Live sensor noise and the demo
+ *  simulator both produce several samples per scan; a single reading (e.g.
+ *  the last one) is noisier and easier to spoof than the average. */
+function averageReadings(rs: SensorReading[]): SensorReading {
+  const numKeys = [
+    'f1_415nm', 'f2_445nm', 'f3_480nm', 'f4_515nm', 'f5_555nm',
+    'f6_590nm', 'f7_630nm', 'f8_680nm', 'clear', 'nir',
+    'moisture_pct', 'temperature_c',
+  ] as const;
+
+  const out = {} as Record<(typeof numKeys)[number], number>;
+  for (const k of numKeys) {
+    out[k] = rs.reduce((sum, r) => sum + ((r[k] as number) ?? 0), 0) / rs.length;
+  }
+
+  const phVals = rs.map((r) => r.ph).filter((v): v is number => v !== undefined);
+  const ph = phVals.length ? phVals.reduce((s, v) => s + v, 0) / phVals.length : undefined;
+
+  return { ...out, ph, timestamp: Date.now() } as SensorReading;
+}
 
 export function TestPage() {
   const navigate = useNavigate();
@@ -70,8 +94,13 @@ export function TestPage() {
   const [sampleId, setSampleId]     = useState('');
   const [feedType, setFeedType]     = useState('Maize Silage');
   const [batchId, setBatchId]       = useState('');
-  // Simulation mode: each test automatically uses the next sample condition.
-  const cycleRef = useRef<Record<'feed' | 'silage', number>>({ feed: 0, silage: 0 });
+
+  // Telemetry mode (set on the Device page) and, only for demo mode, which
+  // scenario to run. This replaces the old auto-cycling counter — the demo
+  // scenario is now an explicit, visible choice, not hidden state.
+  const mode = getMode();
+  const [demoScenario, setDemoScenario] = useState<ScenarioName>('good_feed');
+  const [deviceOffline, setDeviceOffline] = useState(false);
 
   // Test state
   const [phase, setPhase]                       = useState<Phase>('setup');
@@ -82,7 +111,7 @@ export function TestPage() {
   const [imageFeatures, setImageFeatures]       = useState<ImageFeatures | undefined>();
 
   // Refs for cleanup
-  const sourceRef        = useRef<SimulatedSource | null>(null);
+  const sourceRef        = useRef<DataSource | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -111,21 +140,31 @@ export function TestPage() {
     setPhase('scanning');
     setScanProgress(0);
     setReadings([]);
+    setDeviceOffline(false);
 
-    // Simulation mode: the next sample condition is chosen automatically.
-    const pool = PROFILES.filter((p) => p.type === sampleType);
-    const scenario: ScenarioName = pool[cycleRef.current[sampleType] % pool.length].name;
-    cycleRef.current[sampleType] += 1;
-
-    const source = new SimulatedSource(scenario);
+    const scenario: ScenarioName = demoScenario;
+    const source = createSource(mode, scenario);
     sourceRef.current = source;
     const collectedReadings: SensorReading[] = [];
 
-    await source.start((reading) => {
-      collectedReadings.push(reading);
-      setCurrentReading(reading);
-      setReadings((prev) => [...prev, reading]);
-    });
+    try {
+      await Promise.race([
+        source.start((reading) => {
+          collectedReadings.push(reading);
+          setCurrentReading(reading);
+          setReadings((prev) => [...prev, reading]);
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), LIVE_CONNECT_TIMEOUT_MS),
+        ),
+      ]);
+    } catch {
+      // Live mode couldn't reach the device in time — don't fabricate a result.
+      source.stop();
+      setDeviceOffline(true);
+      setPhase('setup');
+      return;
+    }
 
     const startTime = Date.now();
     progressTimerRef.current = setInterval(() => {
@@ -138,8 +177,13 @@ export function TestPage() {
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
       setScanProgress(100);
 
-      const finalReading = collectedReadings[collectedReadings.length - 1];
-      if (!finalReading) { setPhase('setup'); return; }
+      if (collectedReadings.length === 0) {
+        // Connected, but no packets arrived during the scan window.
+        setDeviceOffline(mode === 'live');
+        setPhase('setup');
+        return;
+      }
+      const finalReading = averageReadings(collectedReadings);
 
       const modelOutput = predict(finalReading, sampleType, imageFeatures);
 
@@ -149,7 +193,7 @@ export function TestPage() {
         sampleType,
         feedType:     feedType.trim() || 'General Feed',
         batchId:      batchId.trim() || `BAT-${Date.now().toString(36).toUpperCase()}`,
-        scenario,
+        scenario:     mode === 'live' ? 'live' : scenario,
         reading:      finalReading,
         imageFeatures,
         modelOutput,
@@ -159,7 +203,7 @@ export function TestPage() {
       setPhase('done');
       navigate('/result', { state: { session } });
     }, SCAN_DURATION_MS);
-  }, [sampleType, sampleId, feedType, batchId, imageFeatures, navigate]);
+  }, [sampleType, sampleId, feedType, batchId, imageFeatures, navigate, mode, demoScenario]);
 
   const stopTest = useCallback(() => {
     sourceRef.current?.stop();
@@ -172,18 +216,52 @@ export function TestPage() {
   const isScanning = phase === 'scanning';
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-6 sm:py-8 space-y-6 pb-14">
+    <main className="page">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">New Quality Test</h1>
-          <p className="text-xs text-gray-500 mt-0.5">Choose the sample type and start the scan</p>
+          <h1 className="page-title">New Quality Test</h1>
+          <p className="page-sub">Choose the sample type and start the scan</p>
         </div>
+        <span
+          className={`text-xs font-bold px-2.5 py-1 rounded-full border shrink-0 ${
+            mode === 'live'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-amber-50 text-amber-800 border-amber-200'
+          }`}
+        >
+          {mode === 'live' ? 'LIVE SENSOR' : 'DEMO'}
+        </span>
       </div>
+
+      {deviceOffline && (
+        <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-sm text-rose-800 font-medium">
+          Device offline — no packets received from the sensor. Check the ESP32's power and
+          Wi-Fi, or switch to Demo mode on the Device page.
+        </div>
+      )}
+
+      {mode === 'demo' && (
+        <section className="space-y-2">
+          <label className="label">
+            Demo Sample Condition
+          </label>
+          <select
+            value={demoScenario}
+            onChange={(e) => setDemoScenario(e.target.value as ScenarioName)}
+            disabled={isScanning}
+            className="field w-full disabled:opacity-50"
+          >
+            {PROFILES.filter((p) => p.type === sampleType).map((p) => (
+              <option key={p.name} value={p.name}>{p.label}</option>
+            ))}
+          </select>
+        </section>
+      )}
 
       {/* ── Sample Type ─────────────────────────────────────── */}
       <section className="space-y-2">
-        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+        <label className="label">
           Sample Category
         </label>
         <div className="grid grid-cols-2 gap-3">
@@ -194,15 +272,15 @@ export function TestPage() {
               onClick={() => setSampleType(type)}
               disabled={isScanning}
               aria-pressed={sampleType === type}
-              className={`flex items-center justify-center gap-2.5 p-4 rounded-2xl border-2 font-bold text-base transition-all ${
+              className={`flex items-center justify-center gap-2.5 p-4 rounded-xl border-2 font-bold text-base transition-all ${
                 sampleType === type
-                  ? 'border-emerald-800 bg-emerald-50/80 text-emerald-900 shadow-xs'
+                  ? 'border-emerald-800 bg-emerald-50 text-emerald-900'
                   : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300'
               } disabled:opacity-50`}
             >
               {type === 'feed'
-                ? <Leaf className="w-5 h-5 text-emerald-700" aria-hidden="true" />
-                : <FlaskConical className="w-5 h-5 text-emerald-700" aria-hidden="true" />}
+                ? <Leaf className="w-5 h-5" aria-hidden="true" />
+                : <FlaskConical className="w-5 h-5" aria-hidden="true" />}
               {type === 'feed' ? 'Dry Feed' : 'Silage'}
             </button>
           ))}
@@ -210,8 +288,8 @@ export function TestPage() {
       </section>
 
       {/* ── Sample Details ───────────────────────────────────── */}
-      <section className="space-y-3 bg-white border border-gray-200/80 rounded-2xl p-4 shadow-xs">
-        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+      <section className="card space-y-3 p-4">
+        <label className="text-xs font-bold text-gray-500 block">
           Sample Details
         </label>
         <div className="space-y-2.5">
@@ -221,7 +299,7 @@ export function TestPage() {
             value={sampleId}
             onChange={(e) => setSampleId(e.target.value)}
             disabled={isScanning}
-            className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:border-emerald-700 disabled:opacity-50"
+            className="field w-full disabled:opacity-50"
           />
           <input
             type="text"
@@ -229,7 +307,7 @@ export function TestPage() {
             value={feedType}
             onChange={(e) => setFeedType(e.target.value)}
             disabled={isScanning}
-            className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:border-emerald-700 disabled:opacity-50"
+            className="field w-full disabled:opacity-50"
           />
           <input
             type="text"
@@ -237,19 +315,19 @@ export function TestPage() {
             value={batchId}
             onChange={(e) => setBatchId(e.target.value)}
             disabled={isScanning}
-            className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-700 focus:border-emerald-700 disabled:opacity-50"
+            className="field w-full disabled:opacity-50"
           />
         </div>
       </section>
 
       {/* ── Automatic sensor readings note ───────────────────── */}
-      <p className="text-xs text-gray-500 bg-emerald-50/60 border border-emerald-100 rounded-xl p-3">
-        Spectral, near-infrared (NIR), moisture and temperature readings are captured automatically by the sensor unit{sampleType === 'silage' ? ', along with pH' : ''}. You only need to add the sample details.
+      <p className="note note-brand text-xs">
+        Spectral, near-infrared (NIR), moisture and temperature readings are captured automatically{mode === 'live' ? ' from the connected sensor unit' : ' (demo data)'}{sampleType === 'silage' ? ', along with pH' : ''}. You only need to add the sample details.
       </p>
 
       {/* ── Photo capture ────────────────────────────────────── */}
       <section className="space-y-2">
-        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+        <label className="text-xs font-bold text-gray-500 block">
           Sample Photo <span className="font-normal text-gray-400 lowercase">(optional)</span>
         </label>
         <label
@@ -294,7 +372,7 @@ export function TestPage() {
           <button
             type="button"
             onClick={startTest}
-            className="w-full flex items-center justify-center gap-2.5 bg-emerald-800 text-white p-4 rounded-2xl font-bold text-lg hover:bg-emerald-700 transition-all shadow-md active:scale-98"
+            className="btn btn-primary w-full flex items-center justify-center gap-2.5"
           >
             <Play className="w-5 h-5 fill-current" aria-hidden="true" />
             Start Test
@@ -303,7 +381,7 @@ export function TestPage() {
           <button
             type="button"
             onClick={stopTest}
-            className="w-full flex items-center justify-center gap-2.5 bg-rose-600 text-white p-4 rounded-2xl font-bold text-lg hover:bg-rose-500 transition-all shadow-md"
+            className="w-full flex items-center justify-center gap-2.5 bg-rose-600 text-white p-4 rounded-xl font-bold text-lg hover:bg-rose-500 transition shadow-md"
           >
             <Square className="w-5 h-5 fill-current" aria-hidden="true" />
             Stop Test
@@ -321,7 +399,7 @@ export function TestPage() {
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold text-emerald-900 scan-pulse flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-ping" />
-              Streaming Sensor Readings…
+              {mode === 'live' ? 'Streaming Live Sensor Readings…' : 'Streaming Demo Readings…'}
             </span>
             <span className="text-sm text-gray-600 font-mono font-bold">
               {Math.round(scanProgress)}%
@@ -344,7 +422,7 @@ export function TestPage() {
           {currentReading && (
             <div className="space-y-3 pt-1">
               <SensorReadingCard reading={currentReading} sampleType={sampleType} />
-              <div className="bg-white border border-gray-200/80 rounded-2xl p-4 shadow-xs">
+              <div className="card p-4">
                 <SpectralChart reading={currentReading} />
               </div>
               <p className="text-xs text-gray-500 text-center font-medium">

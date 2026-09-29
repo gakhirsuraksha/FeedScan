@@ -77,6 +77,30 @@ export type ScenarioName =
   | 'good_silage'
   | 'spoiling_silage';
 
+/** Account type. Farmers run tests; producers publish batch reference data. */
+export type UserRole = 'farmer' | 'producer';
+
+/**
+ * Reference data a feed/silage PRODUCER declares for a batch, stored in the
+ * shared Realtime Database (not the local per-device IndexedDB). Any farmer
+ * looking up this batch ID sees this, alongside their own device's test
+ * results for the same batch ID.
+ */
+export interface BatchRecord {
+  batchId: string;
+  producerId: string;
+  producerName: string;
+  sampleType: 'feed' | 'silage';
+  feedType?: string;
+  moisture_pct?: number;
+  ph?: number;
+  protein_pct?: number;
+  fiber_pct?: number;
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Scenario {
   name: ScenarioName;
   label: string;

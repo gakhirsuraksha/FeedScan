@@ -21,14 +21,30 @@ import { RF_CLASSES, RF_TREES } from './rfModelData';
  */
 const SEVERITY: Record<Classification, number> = { GOOD: 0, CHECK: 1, ACTION_REQUIRED: 2 };
 
+// Must match the "no photo taken" branch in ml/train_model.py exactly, so the
+// model behaves the same whether the photo step is skipped here or in training.
+const NO_IMAGE_BRIGHTNESS = 128;
+const NO_IMAGE_REDNESS = 1.0;
+
 /** Feature order MUST match FEATURES in ml/train_model.py */
-function toFeatures(r: SensorReading, sampleType: 'feed' | 'silage'): number[] {
+function toFeatures(
+  r: SensorReading,
+  sampleType: 'feed' | 'silage',
+  imageFeatures?: ImageFeatures,
+): number[] {
+  const hasImage = imageFeatures ? 1 : 0;
+  const brightness = imageFeatures?.brightness ?? NO_IMAGE_BRIGHTNESS;
+  const redness = imageFeatures
+    ? imageFeatures.avgR / Math.max(1, (imageFeatures.avgG + imageFeatures.avgB) / 2)
+    : NO_IMAGE_REDNESS;
+
   return [
     r.f1_415nm, r.f2_445nm, r.f3_480nm, r.f4_515nm, r.f5_555nm,
     r.f6_590nm, r.f7_630nm, r.f8_680nm, r.clear, r.nir,
     r.moisture_pct, r.temperature_c, r.ph ?? 0, sampleType === 'silage' ? 1 : 0,
     (r.f1_415nm + r.f2_445nm) / Math.max(1, r.f5_555nm + r.f6_590nm),
     r.nir / Math.max(1, r.clear),
+    hasImage, brightness, redness,
   ];
 }
 
@@ -53,7 +69,7 @@ export class RandomForestModel implements QualityModel {
   ): ModelOutput {
     const ruleOut = this.rules.predict(reading, sampleType, imageFeatures);
 
-    const proba = forestProba(toFeatures(reading, sampleType));
+    const proba = forestProba(toFeatures(reading, sampleType, imageFeatures));
     const best = proba.indexOf(Math.max(...proba));
     const rfClass = RF_CLASSES[best] as Classification;
 

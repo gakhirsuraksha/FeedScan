@@ -18,7 +18,8 @@ CLASSES = ["GOOD", "CHECK", "ACTION_REQUIRED"]
 SPECTRAL = ["f1_415nm", "f2_445nm", "f3_480nm", "f4_515nm", "f5_555nm", "f6_590nm",
             "f7_630nm", "f8_680nm", "clear", "nir"]
 FEATURES = SPECTRAL + ["moisture_pct", "temperature_c", "ph", "is_silage",
-                       "blue_green_ratio", "nir_clear_ratio"]
+                       "blue_green_ratio", "nir_clear_ratio",
+                       "has_image", "brightness", "redness_ratio"]
 
 # Base spectra [F1..F8, Clear, NIR]; first five match the app's simulator.
 SPEC = {
@@ -32,6 +33,19 @@ SPEC = {
 SPEC["wet_moldy_feed"] = [650, 760, 880, 1000, 1150, 1150, 1100, 1000, 3300, 2200]
 SPEC["borderline_silage"] = [int((a + b) / 2) for a, b in zip(SPEC["good_silage"], SPEC["spoiling_silage"])]
 
+# Base photo colour [avgR, avgG, avgB] per profile — a rough, hand-set expectation of
+# how each condition tends to look (dark + reddish-brown for mould/heat damage, bright
+# and neutral for good samples). NOT measured from real photos. See docs/ml-training.md.
+IMG = {
+    "good_feed":         [180, 175, 160],
+    "high_moisture":     [150, 145, 135],
+    "suspicious":        [170, 150, 140],
+    "wet_moldy_feed":    [70, 40, 35],     # dark + reddish-brown -> mould/heat cue
+    "good_silage":       [150, 160, 110],  # yellow-green
+    "borderline_silage": [130, 125, 100],
+    "spoiling_silage":   [100, 55, 45],    # dark + reddish -> spoilage cue
+}
+
 # name: (label, is_silage, moisture range, temp range, ph range or None)
 PROFILES = {
     "good_feed":         ("GOOD",            0, (10, 14), (24, 28), None),
@@ -43,20 +57,39 @@ PROFILES = {
     "spoiling_silage":   ("ACTION_REQUIRED", 1, (73, 80), (28, 35), (5.3, 7.0)),
 }
 
+# Neutral defaults used whenever no photo was taken — must match RandomForestModel.ts.
+NO_IMAGE_BRIGHTNESS = 128.0
+NO_IMAGE_REDNESS = 1.0
+# Fraction of synthetic rows that simulate "a photo was attached" (photo is optional
+# in the app, so the model must work well both with and without one).
+PHOTO_ATTACH_RATE = 0.7
+
 def make_dataset(n_per_class, seed, noise):
     rng = np.random.default_rng(seed)
     X, y = [], []
     for name, (label, silage, mo, te, ph) in PROFILES.items():
         base = np.array(SPEC[name], dtype=float)
+        img_base = np.array(IMG[name], dtype=float)
         for _ in range(n_per_class):
             spec = base * rng.uniform(1 - noise, 1 + noise, size=len(base))
             moisture = rng.uniform(*mo)
             temp = rng.uniform(*te)
             phv = rng.uniform(*ph) if ph else 0.0
             f = dict(zip(SPECTRAL, spec))
+
+            has_image = 1.0 if rng.random() < PHOTO_ATTACH_RATE else 0.0
+            if has_image:
+                r, g, b = img_base * rng.uniform(1 - noise, 1 + noise, size=3)
+                brightness = (r + g + b) / 3
+                redness_ratio = r / max(1.0, (g + b) / 2)
+            else:
+                brightness = NO_IMAGE_BRIGHTNESS
+                redness_ratio = NO_IMAGE_REDNESS
+
             row = list(spec) + [moisture, temp, phv, silage,
                                 (f["f1_415nm"] + f["f2_445nm"]) / max(1, f["f5_555nm"] + f["f6_590nm"]),
-                                f["nir"] / max(1, f["clear"])]
+                                f["nir"] / max(1, f["clear"]),
+                                has_image, brightness, redness_ratio]
             X.append(row); y.append(CLASSES.index(label))
     return np.array(X), np.array(y)
 
